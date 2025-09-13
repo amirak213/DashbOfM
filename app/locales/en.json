@@ -1,0 +1,13 @@
+{
+  "dashboard": "Dashboard",
+  "welcome": "Welcome to your dashboard",
+  "users": "Users",
+  "sessions": "Sessions",
+  "analytics": "Analytics",
+  "logout": "Logout",
+  "myDashboard": "My Dashboard",
+  "accessDashboard": "Access your personalized dashboard",
+  "activeUsers": "Active users",
+  "activeSessions": "Active sessions",
+  "engagementRate": "Engagement rate"
+}

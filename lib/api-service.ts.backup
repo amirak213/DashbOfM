@@ -1,0 +1,350 @@
+"use client"
+
+import { useCallback } from "react"
+
+export function useApiService() {
+  const getBaseUrl = useCallback(() => {
+    const baseUrl = localStorage.getItem("api-base-url")
+    console.log("=== API Service getBaseUrl ===")
+    console.log("Retrieved from localStorage:", baseUrl)
+
+    if (!baseUrl) {
+      console.error("API base URL not found in localStorage")
+      throw new Error("API base URL not found in localStorage. Please go back to the home page and enter your API URL.")
+    }
+
+    console.log("Using base URL:", baseUrl)
+    return baseUrl
+  }, [])
+
+  const getApiPrefix = useCallback(() => {
+    const prefix = localStorage.getItem("api-prefix") || "/api/v1/chat"
+    console.log("API Service - Getting API prefix from localStorage:", prefix)
+    return prefix
+  }, [])
+
+  const get = useCallback(
+    async (endpoint: string) => {
+      try {
+        const baseUrl = getBaseUrl()
+        const apiPrefix = getApiPrefix()
+        let url = `${baseUrl}${apiPrefix}${endpoint}`
+
+        console.log("=== Making API Request ===")
+        console.log("Original URL:", url)
+
+        // Check if we're on HTTPS and trying to access HTTP
+        const isHttpsPage = window.location.protocol === "https:"
+        const isHttpApi = url.startsWith("http://")
+
+        if (isHttpsPage && isHttpApi) {
+          console.log("Mixed content detected, using CORS proxy")
+          // Use a CORS proxy for mixed content
+          url = `https://cors-anywhere.herokuapp.com/${url}`
+          console.log("Proxied URL:", url)
+        }
+
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+        }
+
+        // Add ngrok bypass header if the URL contains ngrok
+        if (url.includes("ngrok")) {
+          headers["ngrok-skip-browser-warning"] = "true"
+        }
+
+        // Add CORS proxy headers if using proxy
+        if (url.includes("cors-anywhere")) {
+          headers["X-Requested-With"] = "XMLHttpRequest"
+        }
+
+        console.log("Request headers:", headers)
+
+        const response = await fetch(url, {
+          method: "GET",
+          headers,
+          mode: "cors",
+        })
+
+        console.log("Response status:", response.status)
+        console.log("Response headers:", Object.fromEntries(response.headers.entries()))
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("API error response:", errorText)
+
+          // Check if the error response is HTML (common with ngrok or server errors)
+          if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
+            throw new Error(
+              `Server returned HTML error page (${response.status}). This might be a CORS issue or the endpoint doesn't exist.`,
+            )
+          }
+
+          throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`)
+        }
+
+        // Check the content type
+        const contentType = response.headers.get("content-type")
+        console.log("Content-Type:", contentType)
+
+        // Try to get the response text first
+        const responseText = await response.text()
+        console.log("Raw response text:", responseText.substring(0, 200) + "...")
+
+        // If empty response, return empty object
+        if (!responseText.trim()) {
+          console.log("Empty response received")
+          return {}
+        }
+
+        // Check if it's HTML (ngrok warning page or server error)
+        if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+          // Check if it's ngrok warning page
+          if (responseText.includes("ngrok")) {
+            throw new Error(
+              "Received ngrok warning page. Make sure to add 'ngrok-skip-browser-warning: true' header or visit the URL in browser first.",
+            )
+          }
+          throw new Error(
+            `Server returned HTML instead of JSON for endpoint: ${endpoint}. This usually means the endpoint doesn't exist or there's a server error.`,
+          )
+        }
+
+        // Try to parse as JSON
+        try {
+          const data = JSON.parse(responseText)
+          console.log("Successfully parsed JSON response")
+          return data
+        } catch (jsonError) {
+          console.error("JSON parsing error:", jsonError)
+          console.error("Failed to parse response:", responseText.substring(0, 500))
+          throw new Error(`Invalid JSON response from ${endpoint}. Response: ${responseText.substring(0, 200)}`)
+        }
+      } catch (error) {
+        console.error("API request failed:", error)
+
+        // Check if it's a CORS error
+        if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+          throw new Error(
+            `CORS Error: Cannot access the API. Try running the dashboard locally with 'npm run dev' to avoid HTTPS/HTTP mixed content issues.`,
+          )
+        }
+
+        throw error
+      }
+    },
+    [getBaseUrl, getApiPrefix],
+  )
+
+  const post = useCallback(
+    async (endpoint: string, data: any) => {
+      try {
+        const baseUrl = getBaseUrl()
+        const apiPrefix = getApiPrefix()
+        let url = `${baseUrl}${apiPrefix}${endpoint}`
+
+        // Check if we're on HTTPS and trying to access HTTP
+        const isHttpsPage = window.location.protocol === "https:"
+        const isHttpApi = url.startsWith("http://")
+
+        if (isHttpsPage && isHttpApi) {
+          url = `https://cors-anywhere.herokuapp.com/${url}`
+        }
+
+        console.log("Making POST request to:", url, "with data:", data)
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }
+
+        if (url.includes("ngrok")) {
+          headers["ngrok-skip-browser-warning"] = "true"
+        }
+
+        if (url.includes("cors-anywhere")) {
+          headers["X-Requested-With"] = "XMLHttpRequest"
+        }
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(data),
+          mode: "cors",
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("API error response:", errorText)
+
+          if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
+            throw new Error(`Server returned HTML error page (${response.status}). Check endpoint and CORS settings.`)
+          }
+
+          throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`)
+        }
+
+        const responseText = await response.text()
+        if (!responseText.trim()) {
+          return {}
+        }
+
+        try {
+          const responseData = JSON.parse(responseText)
+          console.log("POST response data:", responseData)
+          return responseData
+        } catch (jsonError) {
+          return {}
+        }
+      } catch (error) {
+        console.error("POST request failed:", error)
+
+        if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+          throw new Error("CORS Error: Try running the dashboard locally to avoid mixed content issues.")
+        }
+
+        throw error
+      }
+    },
+    [getBaseUrl, getApiPrefix],
+  )
+
+  const put = useCallback(
+    async (endpoint: string, data: any) => {
+      try {
+        const baseUrl = getBaseUrl()
+        const apiPrefix = getApiPrefix()
+        let url = `${baseUrl}${apiPrefix}${endpoint}`
+
+        const isHttpsPage = window.location.protocol === "https:"
+        const isHttpApi = url.startsWith("http://")
+
+        if (isHttpsPage && isHttpApi) {
+          url = `https://cors-anywhere.herokuapp.com/${url}`
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }
+
+        if (url.includes("ngrok")) {
+          headers["ngrok-skip-browser-warning"] = "true"
+        }
+
+        if (url.includes("cors-anywhere")) {
+          headers["X-Requested-With"] = "XMLHttpRequest"
+        }
+
+        const response = await fetch(url, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify(data),
+          mode: "cors",
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+
+          if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
+            throw new Error(`Server returned HTML error page (${response.status}). Check endpoint and CORS settings.`)
+          }
+
+          throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`)
+        }
+
+        const responseText = await response.text()
+        if (!responseText.trim()) {
+          return {}
+        }
+
+        try {
+          return JSON.parse(responseText)
+        } catch (jsonError) {
+          return {}
+        }
+      } catch (error) {
+        console.error("PUT request failed:", error)
+
+        if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+          throw new Error("CORS Error: Try running the dashboard locally to avoid mixed content issues.")
+        }
+
+        throw error
+      }
+    },
+    [getBaseUrl, getApiPrefix],
+  )
+
+  const del = useCallback(
+    async (endpoint: string) => {
+      try {
+        const baseUrl = getBaseUrl()
+        const apiPrefix = getApiPrefix()
+        let url = `${baseUrl}${apiPrefix}${endpoint}`
+
+        const isHttpsPage = window.location.protocol === "https:"
+        const isHttpApi = url.startsWith("http://")
+
+        if (isHttpsPage && isHttpApi) {
+          url = `https://cors-anywhere.herokuapp.com/${url}`
+        }
+
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+        }
+
+        if (url.includes("ngrok")) {
+          headers["ngrok-skip-browser-warning"] = "true"
+        }
+
+        if (url.includes("cors-anywhere")) {
+          headers["X-Requested-With"] = "XMLHttpRequest"
+        }
+
+        const response = await fetch(url, {
+          method: "DELETE",
+          headers,
+          mode: "cors",
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+
+          if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
+            throw new Error(`Server returned HTML error page (${response.status}). Check endpoint and CORS settings.`)
+          }
+
+          throw new Error(`API error: ${response.status} - ${errorText || response.statusText}`)
+        }
+
+        const responseText = await response.text()
+        if (!responseText.trim()) {
+          return {}
+        }
+
+        try {
+          return JSON.parse(responseText)
+        } catch (jsonError) {
+          return {}
+        }
+      } catch (error) {
+        console.error("DELETE request failed:", error)
+
+        if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+          throw new Error("CORS Error: Try running the dashboard locally to avoid mixed content issues.")
+        }
+
+        throw error
+      }
+    },
+    [getBaseUrl, getApiPrefix],
+  )
+
+  return {
+    get,
+    post,
+    put,
+    delete: del,
+  }
+}

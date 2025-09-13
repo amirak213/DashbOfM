@@ -1,0 +1,13 @@
+{
+  "dashboard": "Tableau de bord",
+  "welcome": "Bienvenue sur ton tableau de bord",
+  "users": "Utilisateurs",
+  "sessions": "Sessions",
+  "analytics": "Analytique",
+  "logout": "Se déconnecter",
+  "myDashboard": "Mon Tableau de bord",
+  "accessDashboard": "Accédez à votre tableau de bord personnalisé",
+  "activeUsers": "Utilisateurs actifs",
+  "activeSessions": "Sessions en cours",
+  "engagementRate": "Taux d'engagement"
+}
