@@ -1,14 +1,10 @@
-import { UrlTokenPersister } from '@/app/hooks/useUrlTokens'
+import type React from "react"
+import { DashboardLayout } from "@/components/dashboard-layout"
 
-export default function DashboardLayout({
+export default function Layout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  return (
-    <div>
-      <UrlTokenPersister />
-      {children}
-    </div>
-  )
+  return <DashboardLayout>{children}</DashboardLayout>
 }

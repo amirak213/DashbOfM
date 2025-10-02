@@ -36,7 +36,7 @@ export function DailyAnalytics() {
 
     try {
       console.log("Fetching daily analytics for days:", days)
-      const data = await authService.get(`/dashboard/analytics/daily?days=${days}`)
+      const data = await authService.get(`/chat/dashboard/analytics/daily?days=${days}`)
       console.log("Analytics data received:", data)
 
       // Check if the response is empty or doesn't have the expected structure
@@ -124,7 +124,6 @@ export function DailyAnalytics() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Daily Analytics</h2>
         <div className="flex items-center gap-2">
-          <span className="text-sm">Time period:</span>
           <Select value={days} onValueChange={setDays}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Select days" />

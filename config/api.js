@@ -1,6 +1,7 @@
 export const API_CONFIG = {
-  BASE_URL: "http://127.0.0.1:8000",
-  PREFIX: "/api/v1", // Removed /chat, using base prefix only
+  // Use environment variable for production, fallback to localhost for development
+  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000",
+  PREFIX: "/api/v1",
   TIMEOUT: 30000,
 
   ENDPOINTS: {
@@ -13,24 +14,41 @@ export const API_CONFIG = {
     CHAT: {
       SEND: "/chat/send",
       SESSIONS: "/chat/sessions",
-    },
-    DASHBOARD: {
-      STATS: "/dashboard/stats",
-      USERS: "/dashboard/users",
-      USER_SESSIONS: "/dashboard/user",
-      ACTIVE_SESSIONS: "/dashboard/sessions/active",
+      DASHBOARD: {
+        STATS: "/chat/dashboard/stats",
+        USERS: "/chat/dashboard/users",
+        USER_SESSIONS: "/chat/dashboard/user",
+        ACTIVE_SESSIONS: "/chat/dashboard/sessions/active",
+        ANALYTICS: "/chat/dashboard/analytics/daily",
+      },
     },
   },
 }
 
-// Note: Make sure your FastAPI backend has CORS configured to allow requests from your frontend domain
-// The backend should include: app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"], ...)
+// LOGS DE DEBUG - AJOUTEZ CECI TEMPORAIREMENT
+console.log("🔍 Environment variable:", process.env.NEXT_PUBLIC_API_BASE_URL);
+console.log("🔍 Final BASE_URL:", `'${API_CONFIG.BASE_URL}'`);
 
 export const buildApiUrl = (endpoint) => {
-  return `${API_CONFIG.BASE_URL}${API_CONFIG.PREFIX}${endpoint}`
+  const baseUrl = API_CONFIG.BASE_URL.trim() // Supprime les espaces
+  const fullUrl = `${baseUrl}${API_CONFIG.PREFIX}${endpoint}`
+
+  // Log détaillé pour debug
+  console.log("🔍 BASE_URL brut:", `'${API_CONFIG.BASE_URL}'`)
+  console.log("🔍 BASE_URL après trim:", `'${baseUrl}'`)
+  console.log("🔍 Endpoint:", endpoint)
+  console.log("🔍 URL finale:", fullUrl)
+
+  return fullUrl
 }
 
 export const buildDashboardUrl = (endpoint, params = "") => {
-  const url = buildApiUrl(API_CONFIG.ENDPOINTS.DASHBOARD[endpoint] || endpoint)
+  const url = buildApiUrl(API_CONFIG.ENDPOINTS.CHAT.DASHBOARD[endpoint] || endpoint)
   return params ? `${url}${params}` : url
+}
+
+export const getExternalApiUrl = (endpoint) => {
+  // For external API calls (like partnership and category stats)
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL 
+  return `${baseUrl}${endpoint}`
 }

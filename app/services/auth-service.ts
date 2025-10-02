@@ -156,7 +156,7 @@ class AuthService {
 
   // Méthodes spécifiques pour le dashboard
   async getDashboardStats() {
-    const response = await this.apiRequest("/dashboard/stats")
+    const response = await this.apiRequest("/chat/dashboard/stats")
     if (!response.ok) {
       throw new Error(`Failed to fetch dashboard stats: ${response.status}`)
     }
@@ -164,7 +164,7 @@ class AuthService {
   }
 
   async getAllUsers(limit = 100, offset = 0) {
-    const response = await this.apiRequest(`/dashboard/users?limit=${limit}&offset=${offset}`)
+    const response = await this.apiRequest(`/chat/dashboard/users?limit=${limit}&offset=${offset}`)
     if (!response.ok) {
       throw new Error(`Failed to fetch users: ${response.status}`)
     }
@@ -172,7 +172,7 @@ class AuthService {
   }
 
   async getUserSessions(userId: string) {
-    const response = await this.apiRequest(`/dashboard/user/${userId}/sessions`)
+    const response = await this.apiRequest(`/chat/dashboard/user/${userId}/sessions`)
     if (!response.ok) {
       throw new Error(`Failed to fetch user sessions: ${response.status}`)
     }
@@ -180,7 +180,7 @@ class AuthService {
   }
 
   async getActiveSessions(hours = 24) {
-    const response = await this.apiRequest(`/dashboard/sessions/active?hours=${hours}`)
+    const response = await this.apiRequest(`/chat/dashboard/sessions/active?hours=${hours}`)
     if (!response.ok) {
       throw new Error(`Failed to fetch active sessions: ${response.status}`)
     }
@@ -188,7 +188,7 @@ class AuthService {
   }
 
   async deleteUser(userId: string) {
-    const response = await this.apiRequest(`/dashboard/user/${userId}`, {
+    const response = await this.apiRequest(`/chat/dashboard/user/${userId}`, {
       method: "DELETE",
     })
     if (!response.ok) {

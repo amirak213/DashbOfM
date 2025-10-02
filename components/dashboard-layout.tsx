@@ -4,11 +4,10 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { 
-  BarChart3, LayoutDashboard, LogOut, Settings, 
-  Users, Activity, Menu, TestTube 
-} from "lucide-react"
+import { BarChart3, LayoutDashboard, LogOut, Users, Activity, Menu, TestTube } from "lucide-react"
 import { authService } from "@/app/services/auth-service"
+import { useTranslation } from "react-i18next"
+import LanguageSwitcher from "@/components/LanguageSwitcher"
 
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -24,9 +23,7 @@ export function LogoInstantM() {
     <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
       <div className="flex items-center">
         {/* Texte L'INSTANT */}
-        <h1 className="instant-text text-xl md:text-2xl mr-3">
-          L&apos;INSTANT
-        </h1>
+        <h1 className="instant-text text-xl md:text-2xl mr-3">CHATBOT</h1>
 
         {/* Cercle avec M */}
         <div className="m-circle relative w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center">
@@ -55,12 +52,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation()
 
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Users", href: "/dashboard/users", icon: Users },
-    { name: "Sessions", href: "/dashboard/sessions", icon: Activity },
-    { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+    { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard },
+    { name: t("users"), href: "/dashboard/users", icon: Users },
+    { name: t("sessions"), href: "/dashboard/sessions", icon: Activity },
+    { name: t("analytics"), href: "/dashboard/analytics", icon: BarChart3 },
     { name: "API Test", href: "/dashboard/test", icon: TestTube },
   ]
 
@@ -80,7 +78,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* Menu mobile */}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="outline" size="icon" className="md:hidden ml-2">
+              <Button variant="outline" size="icon" className="md:hidden ml-2 bg-transparent">
                 <Menu className="h-5 w-5" />
                 <span className="sr-only">Toggle navigation menu</span>
               </Button>
@@ -122,11 +120,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             ))}
           </nav>
 
-          {/* Logout */}
-          <div className="ml-4 flex items-center gap-2">
+          {/* Language switcher and logout buttons container */}
+          <div className="ml-4 flex items-center gap-3">
+            <div className="flex items-center">
+              <LanguageSwitcher />
+            </div>
             <Button variant="outline" size="sm" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
-              Logout
+              {t("logout")}
             </Button>
           </div>
         </div>
