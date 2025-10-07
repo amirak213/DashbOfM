@@ -1,6 +1,6 @@
 export const API_CONFIG = {
   // Use environment variable for production, fallback to localhost for development
-  BASE_URL:  "http://api.rpms-tunisie.com",
+  BASE_URL:  "https://api.rpms-tunisie.com",
   PREFIX: "/api/v1",
   TIMEOUT: 30000,
 
