@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { DailyAnalytics } from "@/components/daily-analytics"
+import { DashboardMetrics } from "@/components/dashboard-metrics"
 
 export default function AnalyticsPage() {
   return (
@@ -11,6 +12,7 @@ export default function AnalyticsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
         </div>
         <DailyAnalytics />
+        <DashboardMetrics />
       </div>
     </DashboardLayout>
   )
