@@ -1,4 +1,4 @@
-import { buildApiUrl } from "../../config/api.js"
+import { buildApiUrl } from "../../config/api"
 
 interface LoginResponse {
   access_token: string
@@ -6,12 +6,30 @@ interface LoginResponse {
   expires_in: number
 }
 
+interface User {
+  user_id: string
+  username?: string
+  role?: string
+  [key: string]: any
+}
+
+interface UserProfile {
+  user_id: string
+  lang: string
+  user_type: string
+  preferences: Record<string, any>
+}
+
+interface ApiError extends Error {
+  status?: number
+  detail?: string
+}
+
 class AuthService {
   private accessToken: string | null = null
   private refreshToken: string | null = null
 
   constructor() {
-    // Charger les tokens uniquement depuis localStorage
     if (typeof window !== "undefined") {
       this.accessToken = localStorage.getItem("access_token")
       this.refreshToken = localStorage.getItem("refresh_token")
@@ -89,24 +107,21 @@ class AuthService {
     return this.accessToken
   }
 
-  // Méthode pour faire des requêtes API avec token dans les headers
   async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
     }
 
-    // Ajouter le token d'authentification dans les headers
     if (this.accessToken) {
       headers["Authorization"] = `Bearer ${this.accessToken}`
     }
 
-    // S'assurer que l'endpoint commence par /
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
-    const fullUrl = buildApiUrl(cleanEndpoint)
+    const baseUrl = "https://api.rpms-tunisie.com/db/api"
+    const fullUrl = `${baseUrl}${cleanEndpoint}`
 
-    console.log("🚀 Making API request to:", fullUrl)
-    console.log("🚀 Request headers:", headers)
+    console.log("[v0] API Request:", fullUrl)
 
     try {
       let response = await fetch(fullUrl, {
@@ -114,32 +129,19 @@ class AuthService {
         headers,
       })
 
-      console.log("📥 Response status:", response.status)
-
-      // Si la réponse n'est pas ok, loguer le contenu
-      if (!response.ok) {
-        const errorText = await response.clone().text()
-        console.error("❌ API Error Response:", errorText)
-      }
-
-      // Rafraîchir token si expiré (401)
       if (response.status === 401 && this.refreshToken) {
         console.log("🔄 Token expired, refreshing...")
         const refreshed = await this.refreshAccessToken()
         if (refreshed) {
-          // Refaire la requête avec le nouveau token
           const newHeaders = {
             ...headers,
             Authorization: `Bearer ${this.accessToken}`,
           }
-          console.log("🔄 Retrying with new token")
           response = await fetch(fullUrl, {
             ...options,
             headers: newHeaders,
           })
-          console.log("📥 Retry response status:", response.status)
         } else {
-          // Si le refresh échoue, déconnecter l'utilisateur
           this.logout()
           if (typeof window !== "undefined") {
             window.location.href = "/login"
@@ -147,102 +149,120 @@ class AuthService {
         }
       }
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }))
+
+        console.error("[v0] API Error:", {
+          status: response.status,
+          endpoint: cleanEndpoint,
+          detail: errorData.detail,
+        })
+
+        const error = new Error(`API error: ${response.status}`) as ApiError
+        error.status = response.status
+        error.detail = errorData.detail
+        throw error
+      }
+
       return response
     } catch (error) {
-      console.error("🚨 Fetch error:", error)
+      console.error("[v0] Request failed:", error)
       throw error
     }
   }
 
-  // Méthodes spécifiques pour le dashboard
-  async getDashboardStats() {
-    const response = await this.apiRequest("/chat/dashboard/stats")
-    if (!response.ok) {
-      throw new Error(`Failed to fetch dashboard stats: ${response.status}`)
-    }
+  async getDashboardStats(): Promise<any> {
+    const response = await this.apiRequest("/dashboard/stats")
     return response.json()
   }
 
-  async getAllUsers(limit = 100, offset = 0) {
-    const response = await this.apiRequest(`/chat/dashboard/users?limit=${limit}&offset=${offset}`)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch users: ${response.status}`)
-    }
+  async getAllUsers(limit = 100, offset = 0): Promise<any> {
+    const response = await this.apiRequest(`/dashboard/users?limit=${limit}&offset=${offset}`)
     return response.json()
   }
 
-  async getUserSessions(userId: string) {
-    const response = await this.apiRequest(`/chat/dashboard/user/${userId}/sessions`)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user sessions: ${response.status}`)
-    }
+  async getAllSessions(): Promise<any> {
+    console.log("[v0] Fetching all sessions from /dashboard/user/sessions")
+    const response = await this.apiRequest(`/dashboard/user/sessions`)
     return response.json()
   }
 
-  async getActiveSessions(hours = 24) {
-    const response = await this.apiRequest(`/chat/dashboard/sessions/active?hours=${hours}`)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch active sessions: ${response.status}`)
-    }
+  async getUserSessions(userId: string): Promise<any> {
+    const response = await this.apiRequest(`/dashboard/user/${userId}/sessions`)
     return response.json()
   }
 
-  async deleteUser(userId: string) {
-    const response = await this.apiRequest(`/chat/dashboard/user/${userId}`, {
+  async getActiveSessions(hours = 24): Promise<any> {
+    const response = await this.apiRequest(`/dashboard/sessions/active?hours=${hours}`)
+    return response.json()
+  }
+
+  async getUserDetails(userId: string): Promise<UserProfile> {
+    try {
+      console.log("[v0] Fetching user details for:", userId)
+      const response = await this.apiRequest(`/user/${userId}`)
+      return response.json()
+    } catch (error) {
+      const apiError = error as ApiError
+      if (apiError.status === 404) {
+        console.error("[v0] User not found:", userId)
+        throw new Error(`User ${userId} not found in database`)
+      }
+      if (apiError.status === 500) {
+        console.warn("[v0] Backend error fetching user details, returning empty profile:", userId)
+        return {
+          user_id: userId,
+          lang: "en",
+          user_type: "unknown",
+          preferences: {},
+        }
+      }
+      throw error
+    }
+  }
+
+  async getSessionHistory(sessionId: string): Promise<any> {
+    const response = await this.apiRequest(`/dashboard/session/${sessionId}/history`)
+    return response.json()
+  }
+
+  async deleteUser(userId: string): Promise<any> {
+    const response = await this.apiRequest(`/dashboard/user/${userId}`, {
       method: "DELETE",
     })
-    if (!response.ok) {
-      throw new Error(`Failed to delete user: ${response.status}`)
-    }
     return response.json()
   }
 
-  async getCurrentUser() {
+  async getCurrentUser(): Promise<User> {
     const response = await this.apiRequest("/auth/me")
-    if (!response.ok) {
-      throw new Error(`Failed to fetch current user: ${response.status}`)
-    }
     return response.json()
   }
 
-  // Méthodes génériques
-  async get(endpoint: string) {
+  async get(endpoint: string): Promise<any> {
     const response = await this.apiRequest(endpoint)
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
     return response.json()
   }
 
-  async post(endpoint: string, data: any) {
+  async post(endpoint: string, data: any): Promise<any> {
     const response = await this.apiRequest(endpoint, {
       method: "POST",
       body: JSON.stringify(data),
     })
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
     return response.json()
   }
 
-  async put(endpoint: string, data: any) {
+  async put(endpoint: string, data: any): Promise<any> {
     const response = await this.apiRequest(endpoint, {
       method: "PUT",
       body: JSON.stringify(data),
     })
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
     return response.json()
   }
 
-  async delete(endpoint: string) {
+  async delete(endpoint: string): Promise<any> {
     const response = await this.apiRequest(endpoint, {
       method: "DELETE",
     })
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`)
-    }
     return response.json()
   }
 }

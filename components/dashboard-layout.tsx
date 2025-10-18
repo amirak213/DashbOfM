@@ -59,7 +59,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: t("users"), href: "/dashboard/users", icon: Users },
     { name: t("sessions"), href: "/dashboard/sessions", icon: Activity },
     { name: t("analytics"), href: "/dashboard/analytics", icon: BarChart3 },
-    { name: "API Test", href: "/dashboard/test", icon: TestTube },
+    { name: "Statistique", href: "/dashboard/test", icon: TestTube },
   ]
 
   const handleLogout = () => {

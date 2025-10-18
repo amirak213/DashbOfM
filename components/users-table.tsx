@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ChevronLeft, ChevronRight, Loader2, Search, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, Search, Trash2, RefreshCw, Calendar } from "lucide-react"
 import { authService } from "@/app/services/auth-service"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,6 +51,10 @@ export function UsersTable() {
   const [offset, setOffset] = useState(0)
   const [isDeleting, setIsDeleting] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
+  
+  // ✨ NOUVEAUX FILTRES DE PÉRIODE
+  const [period, setPeriod] = useState<"day" | "week" | "month">("day")
+  const [days, setDays] = useState("30")
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -69,19 +74,33 @@ export function UsersTable() {
     setIsEmpty(false)
 
     try {
-      console.log("Fetching users with limit:", limit, "offset:", offset)
-      const data = await authService.getAllUsers(limit, offset)
+      console.log("Fetching users with filters:", { limit, offset, period, days })
+      
+      // ✨ MODIFICATION: Construction de l'URL avec les paramètres de période
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: offset.toString(),
+        period: period,
+        days: days
+      })
+      
+      // Utilisation de apiRequest au lieu de getAllUsers pour passer les paramètres personnalisés
+      const response = await authService.apiRequest(`/api/v1/chat/dashboard/users?${params}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
 
       console.log("Users data received:", data)
 
-      // Handle different response formats
       if (!data) {
         setIsEmpty(true)
         setUsers([])
         return
       }
 
-      // If data is an array, use it directly
       if (Array.isArray(data)) {
         if (data.length === 0) {
           setIsEmpty(true)
@@ -90,7 +109,6 @@ export function UsersTable() {
         return
       }
 
-      // If data is an object, check if it has a users array property
       if (typeof data === "object") {
         if (data.users && Array.isArray(data.users)) {
           if (data.users.length === 0) {
@@ -100,7 +118,6 @@ export function UsersTable() {
           return
         }
 
-        // If it's an empty object
         if (Object.keys(data).length === 0) {
           setIsEmpty(true)
           setUsers([])
@@ -108,7 +125,6 @@ export function UsersTable() {
         }
       }
 
-      // If we get here, the format is unexpected
       console.warn("Unexpected users data format:", data)
       setIsEmpty(true)
       setUsers([])
@@ -121,9 +137,10 @@ export function UsersTable() {
     }
   }
 
+  // ✨ MODIFICATION: Ajout des dépendances period et days
   useEffect(() => {
     fetchUsers()
-  }, [offset, limit])
+  }, [offset, limit, period, days])
 
   const handleDeleteUser = async (userId: string) => {
     setIsDeleting(true)
@@ -136,7 +153,6 @@ export function UsersTable() {
         throw new Error(`Failed to delete user: ${response.status}`)
       }
 
-      // Refresh the user list
       fetchUsers()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error occurred"
@@ -159,20 +175,52 @@ export function UsersTable() {
   if (isEmpty) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
-            disabled
-          />
+        {/* ✨ NOUVEAU: Header avec filtres pour l'état vide */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 max-w-sm">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher des utilisateurs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              disabled
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Select value={period} onValueChange={(value: "day" | "week" | "month") => setPeriod(value)} disabled>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Jour</SelectItem>
+                <SelectItem value="week">Semaine</SelectItem>
+                <SelectItem value="month">Mois</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={days} onValueChange={setDays} disabled>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 jours</SelectItem>
+                <SelectItem value="30">30 jours</SelectItem>
+                <SelectItem value="60">60 jours</SelectItem>
+                <SelectItem value="90">90 jours</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button variant="outline" size="sm" onClick={fetchUsers} disabled>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <Alert>
           <AlertDescription>
-            No users found. The database might be empty or the users endpoint might not be returning data.
+            Aucun utilisateur trouvé. La base de données est peut-être vide ou il n'y a pas de données pour la période sélectionnée.
           </AlertDescription>
         </Alert>
       </div>
@@ -181,14 +229,50 @@ export function UsersTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search users..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+      {/* ✨ NOUVEAU: Header avec filtres de période */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher des utilisateurs..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          
+          {/* Filtre de période (jour/semaine/mois) */}
+          <Select value={period} onValueChange={(value: "day" | "week" | "month") => setPeriod(value)}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day">Jour</SelectItem>
+              <SelectItem value="week">Semaine</SelectItem>
+              <SelectItem value="month">Mois</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {/* Filtre de nombre de jours */}
+          <Select value={days} onValueChange={setDays}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">7 jours</SelectItem>
+              <SelectItem value="30">30 jours</SelectItem>
+              <SelectItem value="60">60 jours</SelectItem>
+              <SelectItem value="90">90 jours</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {/* Bouton refresh */}
+          <Button variant="outline" size="sm" onClick={fetchUsers}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -201,14 +285,14 @@ export function UsersTable() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User ID</TableHead>
+              <TableHead>ID Utilisateur</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Sessions</TableHead>
               <TableHead>Messages</TableHead>
-              <TableHead>First Seen</TableHead>
-              <TableHead>Last Seen</TableHead>
-              <TableHead>Common Intent</TableHead>
-              <TableHead>Languages</TableHead>
+              <TableHead>Premier Vu</TableHead>
+              <TableHead>Dernier Vu</TableHead>
+              <TableHead>Intention Commune</TableHead>
+              <TableHead>Langues</TableHead>
               {isAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -228,7 +312,7 @@ export function UsersTable() {
             ) : filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={isAdmin ? 9 : 8} className="h-24 text-center">
-                  No users found.
+                  Aucun utilisateur trouvé.
                 </TableCell>
               </TableRow>
             ) : (
@@ -252,19 +336,18 @@ export function UsersTable() {
                         <AlertDialogTrigger asChild>
                           <Button variant="outline" size="icon" className="h-8 w-8 bg-transparent">
                             <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete user</span>
+                            <span className="sr-only">Supprimer l'utilisateur</span>
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete User Data</AlertDialogTitle>
+                            <AlertDialogTitle>Supprimer les Données Utilisateur</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete all data for user {user.user_id}? This action cannot be
-                              undone.
+                              Êtes-vous sûr de vouloir supprimer toutes les données de l'utilisateur {user.user_id} ? Cette action est irréversible.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDeleteUser(user.user_id)}
                               disabled={isDeleting}
@@ -273,10 +356,10 @@ export function UsersTable() {
                               {isDeleting ? (
                                 <>
                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Deleting...
+                                  Suppression...
                                 </>
                               ) : (
-                                "Delete"
+                                "Supprimer"
                               )}
                             </AlertDialogAction>
                           </AlertDialogFooter>
@@ -299,7 +382,7 @@ export function UsersTable() {
           disabled={offset === 0 || isLoading}
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
-          Previous
+          Précédent
         </Button>
         <Button
           variant="outline"
@@ -307,7 +390,7 @@ export function UsersTable() {
           onClick={() => setOffset(offset + limit)}
           disabled={users.length < limit || isLoading}
         >
-          Next
+          Suivant
           <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>

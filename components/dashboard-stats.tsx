@@ -75,6 +75,61 @@ interface SessionStats {
   detected_intents: string[]
 }
 
+// ============================================
+// CACHE SYSTÈME - Évite les appels répétitifs
+// ============================================
+class ProfileCache {
+  private cache = new Map<string, { data: any; timestamp: number; error?: boolean }>();
+  private readonly TTL = 5 * 60 * 1000; // 5 minutes
+  private pendingRequests = new Map<string, Promise<any>>();
+
+  get(userId: string) {
+    const cached = this.cache.get(userId);
+    if (!cached) return null;
+    
+    // Si erreur, ne pas retry pendant 1 minute
+    if (cached.error && Date.now() - cached.timestamp < 60000) {
+      return { error: true };
+    }
+    
+    // Si succès et pas expiré
+    if (!cached.error && Date.now() - cached.timestamp < this.TTL) {
+      return cached.data;
+    }
+    
+    return null;
+  }
+
+  set(userId: string, data: any, isError: boolean = false) {
+    this.cache.set(userId, {
+      data,
+      timestamp: Date.now(),
+      error: isError
+    });
+  }
+
+  hasPendingRequest(userId: string): boolean {
+    return this.pendingRequests.has(userId);
+  }
+
+  setPendingRequest(userId: string, promise: Promise<any>) {
+    this.pendingRequests.set(userId, promise);
+    promise.finally(() => this.pendingRequests.delete(userId));
+  }
+
+  getPendingRequest(userId: string): Promise<any> | undefined {
+    return this.pendingRequests.get(userId);
+  }
+
+  clear() {
+    this.cache.clear();
+    this.pendingRequests.clear();
+  }
+}
+
+const profileCache = new ProfileCache();
+
+
 type Period = "this-week" | "last-week" | "2-weeks" | "1-month"
 
 const COLORS = ["#29C2E2", "#e354bfff", "#4809beff", "#0fab84ff", "#afee04ff", "#FFC658", "#FF8042"]
@@ -200,79 +255,123 @@ export default function EnhancedDashboard() {
     setPreferencesDistribution(prefCount)
   }
 
-  const fetchAllData = async () => {
-    setIsLoading(true)
-    setError(null)
+ const fetchAllData = async () => {
+  setIsLoading(true)
+  setError(null)
 
-    const dateRange = getDateRange(selectedPeriod)
+  const dateRange = getDateRange(selectedPeriod)
 
-    try {
-      if (!authService.isAuthenticated()) {
-        setError("Authentification requise pour accéder au dashboard")
-        return
-      }
-
-      // Fetch main stats
-      const statsData = await authService.get(
-        `/chat/dashboard/stats?start_date=${dateRange.start}&end_date=${dateRange.end}`
-      )
-      console.log("📊 Stats data:", statsData)
-      setStats(statsData)
-
-      // Fetch ALL users data
-      try {
-        const usersData = await authService.get(
-          `/chat/dashboard/users?limit=1000&offset=0`
-        )
-        console.log("👥 All users data fetched:", usersData.length, "users")
-        
-        setAllUsersData(usersData)
-        setTopUsers(usersData.slice(0, 5))
-        
-        // Fetch detailed profiles for each user using /chat/user/{user_id}
-        const profilePromises = usersData.map((user: UserStats) => 
-          authService.get(`/chat/user/${user.user_id}`)
-            .catch(err => {
-              console.error(`Failed to fetch profile for ${user.user_id}:`, err)
-              return null
-            })
-        )
-        
-        const profiles = (await Promise.all(profilePromises)).filter(p => p !== null) as UserProfile[]
-        console.log("👤 User profiles fetched:", profiles.length, "profiles")
-        setUserProfiles(profiles)
-        
-        // Process languages from profiles (using lang field from UserProfile)
-        processLanguagesFromProfiles(profiles)
-        
-        // Process preferences from profiles
-        processPreferencesFromProfiles(profiles)
-      } catch (error) {
-        console.error("❌ Failed to fetch users data:", error)
-        setTopUsers([])
-        setAllUsersData([])
-        setUserProfiles([])
-      }
-
-      // Fetch analytics data
-      try {
-        const analyticsData = await authService.get(
-          `/chat/dashboard/analytics/daily?start_date=${dateRange.start}&end_date=${dateRange.end}`
-        )
-        setDailyAnalytics(analyticsData.daily_analytics || [])
-      } catch (analyticsError) {
-        console.error("❌ Failed to fetch analytics:", analyticsError)
-        setDailyAnalytics([])
-      }
-
-    } catch (err) {
-      console.error("❌ Dashboard error:", err)
-      setError(err instanceof Error ? err.message : "Unknown error")
-    } finally {
-      setIsLoading(false)
+  try {
+    if (!authService.isAuthenticated()) {
+      setError("Authentification requise pour accéder au dashboard")
+      return
     }
-  }
 
+    // Fetch main stats
+    const statsData = await authService.get(
+      `/dashboard/stats?start_date=${dateRange.start}&end_date=${dateRange.end}`
+    )
+    console.log("📊 Stats data:", statsData)
+    setStats(statsData)
+
+    // Fetch ALL users data
+    try {
+      const usersData = await authService.get(
+        `/dashboard/users?limit=1000&offset=0`
+      )
+      console.log("👥 All users data fetched:", usersData.length, "users")
+      
+      setAllUsersData(usersData)
+      setTopUsers(usersData.slice(0, 5))
+      
+      // ✅ CORRECTION : Fetch profiles avec gestion d'erreur 500
+      const profilePromises = usersData.map(async (user: UserStats) => {
+        // Vérifier le cache
+        const cached = profileCache.get(user.user_id);
+        if (cached !== null) {
+          if (cached.error) {
+            console.warn(`⏭️ Skipping user ${user.user_id} (cached error)`);
+            return null;
+          }
+          return cached;
+        }
+
+        // Vérifier si requête déjà en cours
+        if (profileCache.hasPendingRequest(user.user_id)) {
+          return profileCache.getPendingRequest(user.user_id);
+        }
+
+        // Créer nouvelle requête
+        const promise = authService.get(`/user/${user.user_id}`)
+          .then(profile => {
+            profileCache.set(user.user_id, profile, false);
+            return profile;
+          })
+          .catch(err => {
+  // ✅ Gérer l'erreur 500 sans crasher l'application
+  if (err.status === 500) {
+    console.warn(`⏭️ Skipping user ${user.user_id} - Invalid data structure (content_proposals format issue)`);
+    profileCache.set(user.user_id, null, true);
+    return null;
+  }
+  
+  // Autres erreurs
+  if (err.status === 404) {
+    console.warn(`⏭️ User ${user.user_id} not found`);
+    return null;
+  }
+  
+  // Erreurs réseau ou autres
+  console.error(`❌ Failed to fetch profile for ${user.user_id}:`, err.message || err);
+  return null;
+});
+
+        profileCache.setPendingRequest(user.user_id, promise);
+        return promise;
+      });
+      
+      // ✅ Utiliser Promise.allSettled au lieu de Promise.all
+      const profileResults = await Promise.allSettled(profilePromises);
+      const profiles = profileResults
+        .filter(result => result.status === 'fulfilled' && result.value !== null)
+        .map(result => (result as PromiseFulfilledResult<any>).value) as UserProfile[];
+      
+      
+      
+      console.log("👤 User profiles fetched:", profiles.length, "profiles (", usersData.length - profiles.length, "skipped due to errors)");
+      setUserProfiles(profiles);
+      
+      
+      // Process languages from profiles
+      processLanguagesFromProfiles(profiles);
+      
+      // Process preferences from profiles
+      processPreferencesFromProfiles(profiles);
+    } catch (error) {
+      console.error("❌ Failed to fetch users data:", error)
+      setTopUsers([])
+      setAllUsersData([])
+      setUserProfiles([])
+    }
+
+    // Fetch analytics data
+    try {
+      const analyticsData = await authService.get(
+        `/dashboard/analytics/daily?start_date=${dateRange.start}&end_date=${dateRange.end}`
+      )
+      setDailyAnalytics(analyticsData.daily_analytics || [])
+    } catch (analyticsError) {
+      console.error("❌ Failed to fetch analytics:", analyticsError)
+      setDailyAnalytics([])
+    }
+
+  } catch (err) {
+    console.error("❌ Dashboard error:", err)
+    setError(err instanceof Error ? err.message : "Unknown error")
+  } finally {
+    setIsLoading(false)
+  }
+}
   useEffect(() => {
     fetchAllData()
   }, [selectedPeriod])

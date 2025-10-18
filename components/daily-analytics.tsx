@@ -36,7 +36,7 @@ export function DailyAnalytics() {
 
     try {
       console.log("Fetching daily analytics for days:", days)
-      const data = await authService.get(`/chat/dashboard/analytics/daily?days=${days}`)
+      const data = await authService.get(`/dashboard/analytics/daily?days=${days}`)
       console.log("Analytics data received:", data)
 
       // Check if the response is empty or doesn't have the expected structure

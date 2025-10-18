@@ -87,7 +87,7 @@ export function UserDetails({ userId }: UserDetailsProps) {
       
       try {
         console.log("Fetching user data for:", userId)
-        const data = await authService.get(`/chat/user/${userId}`)
+        const data = await authService.get(`/user/${userId}`)
         console.log("User data received:", data)
         setUserData(data)
       } catch (err) {
@@ -105,7 +105,7 @@ export function UserDetails({ userId }: UserDetailsProps) {
 
       try {
         console.log("Fetching history for:", userId)
-        const data = await authService.get(`/chat/history/${userId}`)
+        const data = await authService.get(`/user/${userId}`)
         console.log("History data received:", data)
 
         if (Array.isArray(data)) {
@@ -175,15 +175,7 @@ export function UserDetails({ userId }: UserDetailsProps) {
             </Badge>
           )}
         </TabsTrigger>
-        <TabsTrigger value="history" className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4" />
-          Conversation History
-          {!isLoadingHistory && sessions.length > 0 && (
-            <Badge variant="secondary" className="ml-1">
-              {sessions.length}
-            </Badge>
-          )}
-        </TabsTrigger>
+      
       </TabsList>
 
       <TabsContent value="details" className="space-y-6">

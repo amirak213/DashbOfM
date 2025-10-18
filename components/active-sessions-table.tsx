@@ -6,7 +6,6 @@ import { Loader2, RefreshCw, AlertCircle, Trash2 } from "lucide-react"
 import { authService } from "@/app/services/auth-service"
 
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -24,14 +23,12 @@ import {
 interface ActiveSession {
   session_id: string
   user_id: string
+  created_at?: string
   last_active: string
   message_count: number
+  duration_minutes?: number
   user_type: string
-}
-
-interface ActiveSessionsResponse {
-  active_sessions: ActiveSession[]
-  count: number
+  detected_intents?: string[]
 }
 
 function formatDate(dateString: string): string {
@@ -70,35 +67,30 @@ export function ActiveSessionsTable() {
     setIsEmpty(false)
 
     try {
-      console.log(`Fetching active sessions for last ${hours} hours`)
-      const data = await authService.getActiveSessions(parseInt(hours))
-      console.log("Active sessions data:", data)
+      const data = await authService.getAllSessions()
 
-      // Check if the response is empty or doesn't have the expected structure
-      if (!data || typeof data !== "object") {
+      if (!data) {
         setIsEmpty(true)
         setSessions([])
         setCount(0)
         return
       }
 
-      // Handle different response formats
+      // Backend returns array directly
       if (Array.isArray(data)) {
-        // If the response is directly an array of sessions
         setSessions(data)
         setCount(data.length)
-      } else if (data.active_sessions && Array.isArray(data.active_sessions)) {
-        // If the response has the expected structure
-        setSessions(data.active_sessions)
-        setCount(typeof data.count === "number" ? data.count : data.active_sessions.length)
-      } else if (Object.keys(data).length === 0) {
-        // Empty object response
-        setIsEmpty(true)
-        setSessions([])
-        setCount(0)
-      } else {
-        // Unexpected format
-        console.warn("Unexpected active sessions response format:", data)
+        setIsEmpty(data.length === 0)
+      }
+      // If it's an object with sessions property
+      else if (data.sessions && Array.isArray(data.sessions)) {
+        setSessions(data.sessions)
+        setCount(data.count || data.sessions.length)
+        setIsEmpty(data.sessions.length === 0)
+      }
+      // Unexpected format
+      else {
+        setError(`Unexpected data format: ${typeof data}`)
         setIsEmpty(true)
         setSessions([])
         setCount(0)
@@ -106,7 +98,7 @@ export function ActiveSessionsTable() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error occurred"
       setError(errorMessage)
-      console.error("Active sessions error:", err)
+      console.error("Error fetching sessions:", err)
     } finally {
       setIsLoading(false)
     }
@@ -115,7 +107,7 @@ export function ActiveSessionsTable() {
   const handleDeleteSession = async (sessionId: string) => {
     setIsDeleting(true)
     try {
-      const response = await authService.apiRequest(`/api/v1/chat/dashboard/session/${sessionId}`, {
+      const response = await authService.apiRequest(`/dashboard/session/${sessionId}`, {
         method: "DELETE",
       })
 
@@ -123,7 +115,6 @@ export function ActiveSessionsTable() {
         throw new Error(`Failed to delete session: ${response.status}`)
       }
 
-      // Refresh the sessions list
       fetchSessions()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error occurred"
@@ -139,32 +130,16 @@ export function ActiveSessionsTable() {
   }, [hours])
 
   const isAdmin = currentUserRole === "admin"
-  console.log("Is admin in sessions:", isAdmin, "Current role:", currentUserRole)
 
   if (error) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">Active Sessions</div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm">Time window:</span>
-            <Select value={hours} onValueChange={setHours}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select hours" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="6">Last 6 hours</SelectItem>
-                <SelectItem value="12">Last 12 hours</SelectItem>
-                <SelectItem value="24">Last 24 hours</SelectItem>
-                <SelectItem value="48">Last 48 hours</SelectItem>
-                <SelectItem value="72">Last 72 hours</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={fetchSessions}>
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Retry
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={fetchSessions}>
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Retry
+          </Button>
         </div>
 
         <Alert variant="destructive">
@@ -180,8 +155,8 @@ export function ActiveSessionsTable() {
                 </p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>Make sure your API server is running</li>
-                  <li>Check that the active sessions endpoint exists</li>
-                  <li>Verify your authentication is valid</li>
+                  <li>Check endpoint: /dashboard/user/sessions</li>
+                  <li>Verify your authentication token is valid</li>
                   <li>Try logging out and back in</li>
                 </ul>
               </div>
@@ -196,32 +171,16 @@ export function ActiveSessionsTable() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">0 active sessions in the last {hours} hours</div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm">Time window:</span>
-            <Select value={hours} onValueChange={setHours}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select hours" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="6">Last 6 hours</SelectItem>
-                <SelectItem value="12">Last 12 hours</SelectItem>
-                <SelectItem value="24">Last 24 hours</SelectItem>
-                <SelectItem value="48">Last 48 hours</SelectItem>
-                <SelectItem value="72">Last 72 hours</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={fetchSessions}>
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refresh
-            </Button>
-          </div>
+          <div className="text-sm text-muted-foreground">0 sessions found</div>
+          <Button variant="outline" size="sm" onClick={fetchSessions}>
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Refresh
+          </Button>
         </div>
 
         <Alert>
           <AlertDescription>
-            No active sessions found. There might be no active sessions in the selected time window or the database
-            might be empty.
+            No sessions found. The database might be empty or there are no sessions yet.
           </AlertDescription>
         </Alert>
       </div>
@@ -232,27 +191,12 @@ export function ActiveSessionsTable() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {count} active sessions in the last {hours} hours
+          {count} session{count !== 1 ? "s" : ""} found
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm">Time window:</span>
-          <Select value={hours} onValueChange={setHours}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select hours" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="6">Last 6 hours</SelectItem>
-              <SelectItem value="12">Last 12 hours</SelectItem>
-              <SelectItem value="24">Last 24 hours</SelectItem>
-              <SelectItem value="48">Last 48 hours</SelectItem>
-              <SelectItem value="72">Last 72 hours</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={fetchSessions}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Refresh
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={fetchSessions}>
+          <RefreshCw className="h-4 w-4 mr-1" />
+          Refresh
+        </Button>
       </div>
 
       <div className="rounded-md border">
@@ -264,7 +208,7 @@ export function ActiveSessionsTable() {
               <TableHead>Last Active</TableHead>
               <TableHead>Messages</TableHead>
               <TableHead>User Type</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              {isAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -277,7 +221,7 @@ export function ActiveSessionsTable() {
             ) : sessions.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
-                  No active sessions found.
+                  No sessions found.
                 </TableCell>
               </TableRow>
             ) : (
